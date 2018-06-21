@@ -1,0 +1,59 @@
+---
+title: "Clustering companies by consumer complaints"
+author: "Douglas Zickuhr"
+date: "21/06/2018"
+output: html_document
+---
+
+# First step is to load the libraries
+
+```{r libraries}
+library(tidyverse)
+```
+
+## Loading the dataset
+
+```{r reading}
+df <- read_csv('data/dataset.csv')
+```
+
+## Checking the dataframe 
+
+```{r check data}
+head(df)
+glimpse(df)
+```
+
+## Number of complaints by Year
+
+```{r}
+df %>%
+  count(complaint_year,consumer_region) %>%
+  ggplot() + 
+  geom_line(aes(x = complaint_year,
+                y = n,
+                colour = consumer_region),
+            stat = "identity") + 
+  labs(x = "Year",
+       y = "Complaints",
+       title = "Complaints by Year",
+       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
+       color = "Regions") 
+```
+
+```{r}
+df %>%
+  count(complaint_year,complaint_attended) %>%
+  ggplot() + 
+  geom_col(aes(x = complaint_year,
+               y = n,
+               fill = complaint_attended),
+           position = "dodge") + 
+  labs(x = "Year",
+       y = "Complaints",
+       title = "Complaints by Year",
+       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
+       color = "Complaint attended") 
+  
+```
+
