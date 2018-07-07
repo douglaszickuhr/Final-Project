@@ -120,25 +120,43 @@ silhouette_analysis
 ### Running Kmeans with the best result from silhouette analysis
 ```{r kmeans}
 k = as.numeric(silhouette_analysis[1,1])
-company_kmeans <- kmeans(companies %>%
+companies_kmeans <- kmeans(companies %>%
                   select(starts_with("PC")),
                 centers = k,
                 nstart = nstart)
 ```
 
 
+### Running kmetoid algorithm
 ```{r kmetoids}
-pamk(companies %>%
+k_var <- 2:10
+pamk_analysis <- pamk(companies %>%
                   select(starts_with("PC")),
-     krange = 2:10,
+     krange = k_var <- 2:10,
      criterion = "asw",
      usepam = TRUE)
 
 companies_kmetoids <- pam(companies %>%
                   select(starts_with("PC")),
-    k = 5)
-companies_kmetoids$silinfo$avg.width
+    k = pamk_analysis$nc)
 
 
 ```
+
+### Hierarchical Clustering
+```{r hclust}
+companies_distance <- dist(companies %>%
+                             select(starts_with("PC")))
+
+companies_hclust <- hclust(companies_distance,
+                           method = "complete")
+plot(companies_hclust)
+```
+
+```{r}
+companies_hclust_cluster <- cutree(companies_hclust, k = 2)
+table(companies_hclust_cluster, company_kmeans$cluster)
+
+```
+
 
