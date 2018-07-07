@@ -2,14 +2,17 @@
 title: "Clustering companies by consumer complaints"
 author: "Douglas Zickuhr"
 date: "21/06/2018"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
-# First step is to load the libraries
+# Loading libraries
 ```{r libraries}
 library(tidyverse)
-library(forcats)
-library(knitr)
+library(cluster)
+library(ggbiplot)
+library(fpc)
 ```
 
 ## Loading the dataset
@@ -17,89 +20,125 @@ library(knitr)
 df <- read_csv('data/dataset.csv')
 ```
 
-## Checking the dataframe 
+## Checking the dataframe (tibble)
 ```{r check data}
 head(df)
 glimpse(df)
 ```
 
-## Number of complaints by Year
-```{r}
-df %>%
-  count(complaint_year,consumer_region) %>%
-  ggplot() + 
-  geom_line(aes(x = complaint_year,
-                y = n,
-                colour = consumer_region),
-            stat = "identity") + 
-  labs(x = "Year",
-       y = "Complaints",
-       title = "Complaints by Year",
-       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
-       color = "Regions") 
+## Aggregating the dataset to create indicators by company.
+It's important to mention that just companies with more the 50 complaints and at least 5 solved complaints were considered.
+```{r df_aggregation}
+set.seed(123)
+companies <- df %>%
+  dplyr::filter(!is.na(company_name)) %>%
+  dplyr::mutate(company_name = str_replace_all(company_name,"'","")) %>%
+  dplyr::mutate(company_name = str_replace_all(company_name,'"',"")) %>%
+  dplyr::mutate(company_name = str_trim(company_name)) %>%
+  dplyr::mutate(average_weeks = difftime(complaint_closed_date,
+                                  complaint_entered_date,
+                                  units="weeks")) %>%
+  dplyr::group_by(company_name) %>%
+  dplyr::summarise(total_complaint = n(),
+            total_solved_complaint = sum(complaint_attended == "Y"),
+            perc_solved = total_solved_complaint/total_complaint,
+            total_issues_types = n_distinct(complaint_issue_type),
+            average_weeks = as.numeric(round(mean(average_weeks),digits = 2)),
+            total_states = n_distinct(consumer_state)
+            ) %>%
+  dplyr::filter(total_complaint > 50) %>%
+  dplyr::filter(total_solved_complaint > 5) %>%
+  #dplyr::sample_n(200) %>% 
+  dplyr::mutate(company_id = row_number())
 ```
 
-## Complaints solved and not solved by year
-```{r}
-df %>%
-  count(complaint_year,complaint_attended) %>%
-  ggplot() + 
-  geom_col(aes(x = complaint_year,
-               y = n,
-               fill = complaint_attended),
-           position = "dodge") + 
-  labs(x = "Year",
-       y = "Complaints",
-       title = "Complaints Attended and not attended by Year",
-       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
-       fill = "Complaint attended") 
+## Scalling companies's indicators
+```{r scalling}
+companies_scalled <- companies %>%
+  dplyr::select(-c("company_name","company_id")) %>%
+  scale(center = TRUE,
+        scale = TRUE)
+
+```
+
+## PCA - Principal component analysis - Reduction of dimensions
+```{r pca}
+companies_pca <- prcomp(companies_scalled, 
+                        scale. = TRUE)
+```
+
+
+## Looking to the summary of the PCA it's possible to see that with PC3 it's possible to explain more than 82% of data variance
+```{r pca_summary}
+summary(companies_pca)
+```
+
+## Let's have a look at the biplot
+```{r pca_biplot}
+ggbiplot(companies_pca)
+```
+
+# Clustering
+
+## Binding the companies data frame and principal components 
+```{r companies_pca_binding}
+companies <- cbind(companies,
+                   companies_pca$x)
+```
+
+
+## K-means 
+### Running silhouette analysis to find the best number of clustering
+```{r kmeans_silhoette_analysis}
+companies_silhouette_vector <- numeric(9)
+k_var <- 2:10
+nstart = 20
+
+for (k in k_var){
+  companies_kmeans <- kmeans(companies %>%
+                  select(starts_with("PC")),
+                centers = k,
+                nstart = nstart)
+  companies_kmeans_distance <- companies %>%
+    select(starts_with("PC")) %>%
+    dist()
   
+  s <- silhouette(companies_kmeans$cluster,companies_kmeans_distance)
+  companies_silhouette_vector[k-1] <- mean(s[,3])
+}
+
+
+silhouette_analysis <- tibble(
+  clusters = k_var,
+  s = companies_silhouette_vector
+) %>%
+  arrange(desc(s))
+
+silhouette_analysis
+```
+
+### Running Kmeans with the best result from silhouette analysis
+```{r kmeans}
+k = as.numeric(silhouette_analysis[1,1])
+company_kmeans <- kmeans(companies %>%
+                  select(starts_with("PC")),
+                centers = k,
+                nstart = nstart)
 ```
 
 
-## Complaints by Sector
-```{r}
-df %>%
-  filter(!is.na(company_sector)) %>%
-  mutate(company_sector = fct_lump(factor(company_sector), n = 10)) %>%
-  mutate(company_sector = str_to_title(company_sector)) %>%
-  mutate(company_sector = fct_rev(fct_infreq(company_sector))) %>%
-  ggplot() +
-  geom_bar(aes(x=company_sector,
-               fill=complaint_attended)) +
-  coord_flip() +
-  labs(y = "Number of Complaints",
-       x = NULL,
-       title = "Complaints Attended and not attended by Year",
-       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
-       fill = "Complaint attended") +
-  NULL
-  
-```
+```{r kmetoids}
+pamk(companies %>%
+                  select(starts_with("PC")),
+     krange = 2:10,
+     criterion = "asw",
+     usepam = TRUE)
 
-```{r echo=FALSE, results='asis'}
-df %>%
-  filter(!is.na(company_name)) %>%
-  mutate(complaint_duration = if_else(complaint_attended == "Y",
-                                      round(difftime(complaint_closed_date,
-                                                     complaint_entered_date,
-                                                     units = c("days")),digits = 0),
-                                      NA_real_)) %>%
-  group_by(company_name) %>%
-  summarise(complaints_total = n(),
-            complaints_solved = sum(complaint_attended == "Y"),
-            complaints_issue_variation = n_distinct(complaint_issue_type),
-            complaint_average_duration = round(mean(complaint_duration,
-                                                    na.rm = T),digits = 2)) %>%
-  
-  mutate(company_name = str_to_title(company_name)) %>%
-  mutate(company_name = str_remove_all(company_name,"['\"]")) %>%
-  mutate(company_name = str_trim(company_name)) %>%
-  arrange(company_name) %>%
-  head() %>%
-  kable()
+companies_kmetoids <- pam(companies %>%
+                  select(starts_with("PC")),
+    k = 5)
+companies_kmetoids$silinfo$avg.width
+
 
 ```
-
-
 

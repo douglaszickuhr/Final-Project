@@ -1,0 +1,104 @@
+---
+title: "Clustering companies by consumer complaints"
+author: "Douglas Zickuhr"
+date: "21/06/2018"
+output: html_document
+---
+
+# First step is to load the libraries
+```{r libraries}
+library(tidyverse)
+library(forcats)
+library(knitr)
+```
+
+## Loading the dataset
+```{r reading}
+df <- read_csv('data/dataset.csv')
+```
+
+## Checking the dataframe 
+```{r check data}
+head(df)
+glimpse(df)
+```
+
+## Number of complaints by Year
+```{r}
+df %>%
+  count(complaint_year,consumer_region) %>%
+  ggplot() + 
+  geom_line(aes(x = complaint_year,
+                y = n,
+                colour = consumer_region),
+            stat = "identity") + 
+  labs(x = "Year",
+       y = "Complaints",
+       title = "Complaints by Year",
+       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
+       color = "Regions") 
+```
+
+## Complaints solved and not solved by year
+```{r}
+df %>%
+  count(complaint_year,complaint_attended) %>%
+  ggplot() + 
+  geom_col(aes(x = complaint_year,
+               y = n,
+               fill = complaint_attended),
+           position = "dodge") + 
+  labs(x = "Year",
+       y = "Complaints",
+       title = "Complaints Attended and not attended by Year",
+       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
+       fill = "Complaint attended") 
+  
+```
+
+
+## Complaints by Sector
+```{r}
+df %>%
+  filter(!is.na(company_sector)) %>%
+  mutate(company_sector = fct_lump(factor(company_sector), n = 10)) %>%
+  mutate(company_sector = str_to_title(company_sector)) %>%
+  mutate(company_sector = fct_rev(fct_infreq(company_sector))) %>%
+  ggplot() +
+  geom_bar(aes(x=company_sector,
+               fill=complaint_attended)) +
+  coord_flip() +
+  labs(y = "Number of Complaints",
+       x = NULL,
+       title = "Complaints Attended and not attended by Year",
+       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
+       fill = "Complaint attended") +
+  NULL
+  
+```
+
+```{r echo=FALSE, results='asis'}
+df %>%
+  filter(!is.na(company_name)) %>%
+  mutate(complaint_duration = if_else(complaint_attended == "Y",
+                                      round(difftime(complaint_closed_date,
+                                                     complaint_entered_date,
+                                                     units = c("days")),digits = 0),
+                                      NA_real_)) %>%
+  group_by(company_name) %>%
+  summarise(complaints_total = n(),
+            complaints_solved = sum(complaint_attended == "Y"),
+            complaints_issue_variation = n_distinct(complaint_issue_type),
+            complaint_average_duration = round(mean(complaint_duration,
+                                                    na.rm = T),digits = 2)) %>%
+  
+  mutate(company_name = str_to_title(company_name)) %>%
+  mutate(company_name = str_remove_all(company_name,"['\"]")) %>%
+  mutate(company_name = str_trim(company_name)) %>%
+  arrange(company_name) %>%
+  head()
+
+```
+
+
+
