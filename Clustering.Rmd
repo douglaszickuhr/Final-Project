@@ -20,7 +20,7 @@ library(fpc)
 df <- read_csv('data/dataset.csv')
 ```
 
-## Checking the dataframe (tibble)
+## Checking the dataframe
 ```{r check data}
 head(df)
 glimpse(df)
@@ -61,19 +61,19 @@ companies_scalled <- companies %>%
 
 ```
 
-## PCA - Principal component analysis - Reduction of dimensions
+## PCA - Principal component analysis
+PCA is a algorithm to apply reduction of dimensions
 ```{r pca}
 companies_pca <- prcomp(companies_scalled, 
-                        scale. = TRUE)
+                        scale. = FALSE)
 ```
 
-
-## Looking to the summary of the PCA it's possible to see that with PC3 it's possible to explain more than 82% of data variance
+Looking to the summary of the PCA it's possible to see that with PC3 it's possible to explain more than 82% of data variance
 ```{r pca_summary}
 summary(companies_pca)
 ```
 
-## Let's have a look at the biplot
+## Having a look at the biplot
 ```{r pca_biplot}
 ggbiplot(companies_pca)
 ```
@@ -82,7 +82,7 @@ ggbiplot(companies_pca)
 
 ## Binding the companies data frame and principal components 
 ```{r companies_pca_binding}
-companies <- cbind(companies,
+companies_with_pca <- cbind(companies,
                    companies_pca$x)
 ```
 
@@ -95,15 +95,18 @@ k_var <- 2:10
 nstart = 20
 
 for (k in k_var){
-  companies_kmeans <- kmeans(companies %>%
-                  select(starts_with("PC")),
-                centers = k,
-                nstart = nstart)
-  companies_kmeans_distance <- companies %>%
+  companies_kmeans <- kmeans(companies_with_pca %>%
+                               select(starts_with("PC")),
+                             centers = k,
+                             nstart = nstart)
+  
+  
+  companies_kmeans_distance <- companies_with_pca %>%
     select(starts_with("PC")) %>%
     dist()
   
   s <- silhouette(companies_kmeans$cluster,companies_kmeans_distance)
+  
   companies_silhouette_vector[k-1] <- mean(s[,3])
 }
 
@@ -119,33 +122,52 @@ silhouette_analysis
 
 ### Running Kmeans with the best result from silhouette analysis
 ```{r kmeans}
-k = as.numeric(silhouette_analysis[1,1])
-companies_kmeans <- kmeans(companies %>%
+#k = as.numeric(silhouette_analysis[1,1])
+k = 6
+companies_kmeans <- kmeans(companies_with_pca %>%
                   select(starts_with("PC")),
                 centers = k,
                 nstart = nstart)
 ```
 
 
+```{r kmeans scatter plot}
+ggplot(companies_with_pca) + 
+  geom_point(aes(PC1,PC2,
+                 colour=factor(companies_kmeans$cluster)))
+```
+
+
 ### Running kmetoid algorithm
 ```{r kmetoids}
 k_var <- 2:10
-pamk_analysis <- pamk(companies %>%
+pamk_analysis <- pamk(companies_with_pca %>%
                   select(starts_with("PC")),
      krange = k_var <- 2:10,
      criterion = "asw",
      usepam = TRUE)
+pamk_analysis$crit
 
-companies_kmetoids <- pam(companies %>%
+companies_kmetoids <- pam(companies_with_pca %>%
                   select(starts_with("PC")),
-    k = pamk_analysis$nc)
+    k = k)
 
 
 ```
 
+```{r kmetoids scatter plot}
+ggplot(companies_with_pca) + 
+  geom_point(aes(PC1,PC2,
+                 colour=factor(companies_kmetoids$clustering)))
+
+```
+
+
 ### Hierarchical Clustering
+Clustering observations based on the distance of the Principal Components
+Generating Dendogram
 ```{r hclust}
-companies_distance <- dist(companies %>%
+companies_distance <- dist(companies_with_pca %>%
                              select(starts_with("PC")))
 
 companies_hclust <- hclust(companies_distance,
@@ -153,10 +175,45 @@ companies_hclust <- hclust(companies_distance,
 plot(companies_hclust)
 ```
 
-```{r}
-companies_hclust_cluster <- cutree(companies_hclust, k = 2)
-table(companies_hclust_cluster, company_kmeans$cluster)
 
+### Silhouette analysis
+Comparing the Silhouette for different methods and clusters
+```{r hclust_silhouette}
+set.seed(123)
+met <- c("complete","single","average")
+hclust_sil <- matrix(NA, ncol = 3, nrow = 9,
+                     dimnames = list(2:10, met))
+
+for (i in 2:10){
+  for (j in seq_along(met)){
+    hc <- hclust(companies_distance, met[j])
+    ct <- cutree(hc,i)
+    sil <- silhouette(ct,companies_distance)
+    hclust_sil[i-1,j] <- mean(sil[,3])
+  }
+}
+
+print(hclust_sil)
 ```
 
+Generating hierarchical cluster for 6 different clusters
+```{r hclust_2}
+set.seed(123)
+companies_hclust <- hclust(companies_distance,
+                           method = "average")
+
+companies_hclust_cluster <- cutree(companies_hclust,
+                                   k = 6)
+
+
+companies_pca_cluster <- cbind(companies_with_pca,companies_hclust_cluster) %>%
+  dplyr::rename(hclust = companies_hclust_cluster)
+```
+
+
+Plotting the data based on hierarchical clusters
+```{r}
+ggplot(companies_pca_cluster) + 
+  geom_point(aes(PC1,PC2,colour=factor(hclust)))
+```
 
