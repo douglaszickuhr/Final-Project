@@ -129,48 +129,6 @@ companies_kmeans <- kmeans(companies_with_pca %>%
 ```
 
 
-```{r kmeans scatter plot}
-ggplot(companies_with_pca) + 
-  geom_point(aes(PC1,PC2,
-                 colour=factor(companies_kmeans$cluster)))
-```
-
-
-```{r aggregating indicators by cluster}
-companies_with_pca %>%
-  cbind(cluster = companies_kmeans$cluster) %>%
-  dplyr::group_by(cluster) %>%
-  dplyr::summarise_if(is_numeric, funs(mean,median)) %>%
-  dplyr::select(-starts_with("PC"),-starts_with("company"))
-
-```
-
-
-### Running kmetoid algorithm
-```{r kmetoids}
-k_var <- 2:10
-pamk_analysis <- pamk(companies_with_pca %>%
-                  select(starts_with("PC")),
-     krange = k_var <- 2:10,
-     criterion = "asw",
-     usepam = TRUE)
-pamk_analysis$crit
-
-companies_kmetoids <- pam(companies_with_pca %>%
-                  select(starts_with("PC")),
-    k = k)
-
-
-```
-
-```{r kmetoids scatter plot}
-ggplot(companies_with_pca) + 
-  geom_point(aes(PC1,PC2,
-                 colour=factor(companies_kmetoids$clustering)))
-
-```
-
-
 ### Hierarchical Clustering
 Clustering observations based on the distance of the Principal Components
 Generating Dendogram
@@ -204,7 +162,7 @@ for (i in 2:10){
 print(hclust_sil)
 ```
 
-Generating hierarchical cluster for 6 different clusters
+Generating hierarchical cluster for 5 different clusters
 ```{r hclust_2}
 set.seed(123)
 companies_hclust <- hclust(companies_distance,
@@ -219,9 +177,54 @@ companies_pca_cluster <- cbind(companies_with_pca,companies_hclust_cluster) %>%
 ```
 
 
-Plotting the data based on hierarchical clusters
+
+
+
+## Evaluation of values by clusters (Kmeans and Hierarchical Clusters)
+### Binding the clusters into a single dataframe
+```{r binding clusters to dataframe}
+companies_clusters <- companies_with_pca %>%
+  cbind(kmeans_cluster = companies_kmeans$cluster) %>%
+  cbind(hclust_cluster = companies_hclust_cluster)
+```
+
+### Plotting the data based on Kmeans clusters
+```{r kmeans scatter plot}
+ggplot(companies_with_pca) + 
+  geom_point(aes(PC1,
+                 PC2,
+                 colour=factor(companies_kmeans$cluster)))
+```
+
+### Average values by Kmeans Clusters
+```{r average values for kmeans}
+companies_clusters %>%
+  dplyr::select(-c("hclust_cluster")) %>%
+  dplyr::group_by(kmeans_cluster) %>%
+  dplyr::summarise(total_complaint = mean(total_complaint),
+                   perc_solved = mean(perc_solved),
+                   average_weeks = mean(average_weeks),
+                   n = n()) %>%
+  dplyr::select(-starts_with("PC"),
+                -starts_with("company"))
+```
+
+### Plotting the data based on hierarchical clusters
 ```{r}
 ggplot(companies_pca_cluster) + 
   geom_point(aes(PC1,PC2,colour=factor(hclust)))
+```
+
+### Average values by Hierarchical Clusters
+```{r average values for hclust}
+companies_clusters %>%
+  dplyr::select(-c("kmeans_cluster")) %>%
+  dplyr::group_by(hclust_cluster) %>%
+  dplyr::summarise(total_complaint = mean(total_complaint),
+                   perc_solved = mean(perc_solved),
+                   average_weeks = mean(average_weeks),
+                   n = n()) %>%
+  dplyr::select(-starts_with("PC"),
+                -starts_with("company"))
 ```
 
