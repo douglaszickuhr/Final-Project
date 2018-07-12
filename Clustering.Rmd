@@ -42,13 +42,11 @@ companies <- df %>%
   dplyr::summarise(total_complaint = n(),
             total_solved_complaint = sum(complaint_attended == "Y"),
             perc_solved = total_solved_complaint/total_complaint,
-            total_issues_types = n_distinct(complaint_issue_type),
-            average_weeks = as.numeric(round(mean(average_weeks),digits = 2)),
-            total_states = n_distinct(consumer_state)
+            average_weeks = as.numeric(round(mean(average_weeks),digits = 2))
             ) %>%
   dplyr::filter(total_complaint > 50) %>%
   dplyr::filter(total_solved_complaint > 5) %>%
-  #dplyr::sample_n(200) %>% 
+  dplyr::select(-c("total_solved_complaint")) %>%
   dplyr::mutate(company_id = row_number())
 ```
 
@@ -123,7 +121,7 @@ silhouette_analysis
 ### Running Kmeans with the best result from silhouette analysis
 ```{r kmeans}
 #k = as.numeric(silhouette_analysis[1,1])
-k = 6
+k = 5
 companies_kmeans <- kmeans(companies_with_pca %>%
                   select(starts_with("PC")),
                 centers = k,
@@ -135,6 +133,16 @@ companies_kmeans <- kmeans(companies_with_pca %>%
 ggplot(companies_with_pca) + 
   geom_point(aes(PC1,PC2,
                  colour=factor(companies_kmeans$cluster)))
+```
+
+
+```{r aggregating indicators by cluster}
+companies_with_pca %>%
+  cbind(cluster = companies_kmeans$cluster) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::summarise_if(is_numeric, funs(mean,median)) %>%
+  dplyr::select(-starts_with("PC"),-starts_with("company"))
+
 ```
 
 
@@ -200,10 +208,10 @@ Generating hierarchical cluster for 6 different clusters
 ```{r hclust_2}
 set.seed(123)
 companies_hclust <- hclust(companies_distance,
-                           method = "average")
+                           method = "complete")
 
 companies_hclust_cluster <- cutree(companies_hclust,
-                                   k = 6)
+                                   k = 5)
 
 
 companies_pca_cluster <- cbind(companies_with_pca,companies_hclust_cluster) %>%
