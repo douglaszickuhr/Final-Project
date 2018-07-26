@@ -76,7 +76,15 @@ summary(companies_pca)
 
 ## Having a look at the biplot
 ```{r pca_biplot}
-ggbiplot(companies_pca)
+biplot <- ggbiplot(companies_pca,
+                   circle = TRUE,
+                   alpha = 0.3,
+                   varname.size = 5) + 
+  labs(title = "Consumer Complaints - PC1 and PC2") + 
+  theme_bw()
+
+biplot
+ggsave(filename = "img/biplot.png",plot = biplot)
 ```
 
 # Clustering
