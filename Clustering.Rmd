@@ -10,7 +10,6 @@ output:
 # Loading libraries
 ```{r libraries}
 library(tidyverse)
-library(ggbiplot)
 library(e1071)
 library(cluster)
 
@@ -74,19 +73,6 @@ Looking to the summary of the PCA it's possible to see that with PC2 it's possib
 summary(companies_pca)
 ```
 
-## Having a look at the biplot
-```{r pca_biplot}
-biplot <- ggbiplot(companies_pca,
-                   circle = TRUE,
-                   alpha = 0.3,
-                   varname.size = 5) + 
-  labs(title = "Consumer Complaints - PC1 and PC2") + 
-  theme_bw()
-
-biplot
-ggsave(filename = "img/biplot.png",plot = biplot)
-```
-
 # Clustering
 
 ## Binding the companies data frame and principal components 
@@ -108,7 +94,8 @@ for (k in k_var){
   companies_kmeans <- kmeans(companies_with_pca %>%
                                select(starts_with("PC")),
                              centers = k,
-                             nstart = nstart)
+                             nstart = nstart,
+                             iter.max = 300)
   
   
   companies_kmeans_distance <- companies_with_pca %>%
@@ -132,30 +119,50 @@ silhouette_analysis
 
 ### Running Kmeans with the best result from silhouette analysis
 ```{r kmeans}
-#k = as.numeric(silhouette_analysis[1,1])
 k = 5
 set.seed(123)
 companies_kmeans <- kmeans(companies_with_pca %>%
                   select(starts_with("PC")),
                 centers = k,
-                nstart = nstart)
+                nstart = nstart,
+                iter.max = 300)
 ```
 
 
 ## Fuzzy Clustering
-```{r}
+```{r fcm}
+k = 5
 set.seed(123)
 companies_fcm <- cmeans(companies_with_pca %>%
                                  select(starts_with("PC")),
-       centers = 5)
+                        centers = k,
+                        iter.max = 300,
+                        verbose = TRUE)
 ```
 
 ## Evaluation of values by clusters (Kmeans and Fuzzy Clusters)
 ### Binding the clusters into a single tibble
 ```{r binding clusters to dataframe}
+companies_membership_degree <- companies_with_pca %>%
+  cbind(companies_fcm$membership) %>%
+  dplyr::rename("fuzzy_cluster_1" = `1`,
+                "fuzzy_cluster_2" = `2`,
+                "fuzzy_cluster_3" = `3`,
+                "fuzzy_cluster_4" = `4`,
+                "fuzzy_cluster_5" = `5`)
+
+companies_membership_degree <- companies_membership_degree %>%
+  dplyr::select(company_name,starts_with("fuzzy_cluster_")) %>%
+  gather(degree,membership_degree,-company_name) %>%
+  group_by(company_name) %>%
+  dplyr::summarise(fuzzy_membership_degree = max(membership_degree))
+
 companies_clusters <- companies_with_pca %>%
   cbind(kmeans_cluster = companies_kmeans$cluster) %>%
-  cbind(fuzzy_cluster = companies_fcm$cluster)
+  cbind(fuzzy_cluster = companies_fcm$cluster) %>%
+  inner_join(companies_membership_degree)
+
+write_csv(x = companies_clusters, path = "data/clustered_companies.csv")
 ```
 
 ### Plotting the data based on Kmeans clusters

@@ -10,95 +10,75 @@ output: html_document
 library(tidyverse)
 library(forcats)
 library(knitr)
+library(factoextra)
+library(ggbiplot)
 ```
 
 ## Loading the dataset
-```{r reading}
-df <- read_csv('data/dataset.csv')
+```{r read sumarised dataset}
+clustered_companies <- read_csv('data/clustered_companies.csv')
 ```
 
-## Checking the dataframe 
-```{r check data}
-head(df)
-glimpse(df)
+```{r pca biplot}
+biplot <- fviz_pca_biplot(X = companies_pca,
+                label = "var",
+                col.var = "red",
+                title = "Consumer Complaints - PC1 and PC2",
+                addEllipses  = TRUE,
+                ggtheme = theme_bw(),
+                alpha = 0.3)
+
+biplot
+ggsave(filename = "img/biplot.png",
+       plot = biplot)
+
 ```
 
-## Number of complaints by Year
+
+```{r elbow}
+return_wss <- function(k, df) {
+  x <- kmeans(x = df, centers = k, nstart = 20)
+  x$tot.withinss
+}
+
+elbow <- tibble(cluster = 2:10, tot.withinss = map_dbl(2:10,return_wss,df = clustered_companies %>%
+                                                select(starts_with("PC")))) %>%
+  ggplot(aes(x=cluster,y=tot.withinss)) + 
+  geom_line() + 
+  geom_point() + 
+  geom_point(data=tibble(x=4,y=1456.7857), 
+             aes(x=x, y=y), colour="red", size=10, alpha = 0.5) +
+  labs(title = "Elbow plot",
+       x = "Number of clusters k",
+       y = "Total within-clusters sum of squares") + 
+  theme_bw()
+
+ggsave("img/elbow.png",
+       plot = elbow)
+
+elbow
+```
+
+
+
 ```{r}
-df %>%
-  count(complaint_year,consumer_region) %>%
-  ggplot() + 
-  geom_line(aes(x = complaint_year,
-                y = n,
-                colour = consumer_region),
-            stat = "identity") + 
-  labs(x = "Year",
-       y = "Complaints",
-       title = "Complaints by Year",
-       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
-       color = "Regions") 
+fviz_cluster(companies_kmeans,
+             companies_with_pca %>%
+                  select(PC1,PC2),
+             geom = "point", 
+             shape = 16,
+             ggtheme = theme_minimal(),
+             alpha = 0.5)
 ```
 
-## Complaints solved and not solved by year
 ```{r}
-df %>%
-  count(complaint_year,complaint_attended) %>%
-  ggplot() + 
-  geom_col(aes(x = complaint_year,
-               y = n,
-               fill = complaint_attended),
-           position = "dodge") + 
-  labs(x = "Year",
-       y = "Complaints",
-       title = "Complaints Attended and not attended by Year",
-       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
-       fill = "Complaint attended") 
-  
+kmeans_dist <- dist(scale(clustered_companies %>% select(starts_with("PC"))))
+sil <- silhouette(clustered_companies$kmeans_cluster,kmeans_dist)
+
+silplot <- fviz_silhouette(sil, label = FALSE, print.summary = TRUE)
+ggsave(filename = "img/silhouette.png",
+       plot = silplot)
+
+silplot
 ```
-
-
-## Complaints by Sector
-```{r}
-df %>%
-  filter(!is.na(company_sector)) %>%
-  mutate(company_sector = fct_lump(factor(company_sector), n = 10)) %>%
-  mutate(company_sector = str_to_title(company_sector)) %>%
-  mutate(company_sector = fct_rev(fct_infreq(company_sector))) %>%
-  ggplot() +
-  geom_bar(aes(x=company_sector,
-               fill=complaint_attended)) +
-  coord_flip() +
-  labs(y = "Number of Complaints",
-       x = NULL,
-       title = "Complaints Attended and not attended by Year",
-       caption = "Source: http://dados.gov.br/dataset/cadastro-nacional-de-reclamacoes-fundamentadas-procons-sindec1",
-       fill = "Complaint attended") +
-  NULL
-  
-```
-
-```{r echo=FALSE, results='asis'}
-df %>%
-  filter(!is.na(company_name)) %>%
-  mutate(complaint_duration = if_else(complaint_attended == "Y",
-                                      round(difftime(complaint_closed_date,
-                                                     complaint_entered_date,
-                                                     units = c("days")),digits = 0),
-                                      NA_real_)) %>%
-  group_by(company_name) %>%
-  summarise(complaints_total = n(),
-            complaints_solved = sum(complaint_attended == "Y"),
-            complaints_issue_variation = n_distinct(complaint_issue_type),
-            complaint_average_duration = round(mean(complaint_duration,
-                                                    na.rm = T),digits = 2)) %>%
-  
-  mutate(company_name = str_to_title(company_name)) %>%
-  mutate(company_name = str_remove_all(company_name,"['\"]")) %>%
-  mutate(company_name = str_trim(company_name)) %>%
-  arrange(company_name) %>%
-  head()
-
-```
-
-
 
