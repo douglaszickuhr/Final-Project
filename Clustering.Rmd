@@ -12,6 +12,8 @@ output:
 library(tidyverse)
 library(e1071)
 library(cluster)
+library(inaparc)
+library(factoextra)
 
 ```
 
@@ -119,26 +121,29 @@ silhouette_analysis
 
 ### Running Kmeans with the best result from silhouette analysis
 ```{r kmeans}
-k = 5
 set.seed(123)
+
 companies_kmeans <- kmeans(companies_with_pca %>%
                   select(starts_with("PC")),
-                centers = k,
+                centers = 5,
                 nstart = nstart,
                 iter.max = 300)
+sil_kmeans <- silhouette(companies_kmeans$cluster,dist(companies_with_pca %>%
+              select(starts_with("PC"))))
+mean(sil_kmeans[,3])
+fviz_silhouette(sil_kmeans)
 ```
 
 
 ## Fuzzy Clustering
 ```{r fcm}
-k = 5
 set.seed(123)
-companies_fcm <- cmeans(companies_with_pca %>%
+companies_fcm <- cmeans(x = companies_with_pca %>%
                                  select(starts_with("PC")),
-                        centers = k,
-                        iter.max = 300,
-                        verbose = TRUE)
+                        centers = 5,
+                        iter.max = 500)
 ```
+
 
 ## Evaluation of values by clusters (Kmeans and Fuzzy Clusters)
 ### Binding the clusters into a single tibble
