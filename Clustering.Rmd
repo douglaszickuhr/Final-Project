@@ -8,7 +8,7 @@ output:
 ---
 
 # Loading libraries
-```{r libraries}
+```{r libraries, echo=FALSE}
 library(tidyverse)
 library(e1071)
 library(cluster)
@@ -17,8 +17,8 @@ library(factoextra)
 
 ```
 
-## Loading the dataset
-```{r reading}
+# Loading the raw dataset
+```{r reading, echo=FALSE}
 df <- read_csv('data/dataset.csv')
 ```
 
@@ -128,10 +128,11 @@ companies_kmeans <- kmeans(companies_with_pca %>%
                 centers = 5,
                 nstart = nstart,
                 iter.max = 300)
+
 sil_kmeans <- silhouette(companies_kmeans$cluster,dist(companies_with_pca %>%
               select(starts_with("PC"))))
+
 mean(sil_kmeans[,3])
-fviz_silhouette(sil_kmeans)
 ```
 
 
@@ -147,6 +148,7 @@ companies_fcm <- cmeans(x = companies_with_pca %>%
 
 ## Evaluation of values by clusters (Kmeans and Fuzzy Clusters)
 ### Binding the clusters into a single tibble
+It is also joining the FCM membership degree to the dataframe
 ```{r binding clusters to dataframe}
 companies_membership_degree <- companies_with_pca %>%
   cbind(companies_fcm$membership) %>%
@@ -170,16 +172,6 @@ companies_clusters <- companies_with_pca %>%
 write_csv(x = companies_clusters, path = "data/clustered_companies.csv")
 ```
 
-### Plotting the data based on Kmeans clusters
-```{r kmeans scatter plot}
-ggplot(companies_with_pca) + 
-  geom_point(aes(PC1,
-                 PC2,
-                 colour=factor(companies_kmeans$cluster))) + 
-  labs(colour = "Cluster",
-       title = "K-means Clustering")
-```
-
 ### Average values by Kmeans Clusters
 ```{r average values for kmeans}
 companies_clusters %>%
@@ -192,17 +184,7 @@ companies_clusters %>%
 ```
 
 
-### Plotting the data based on fuzzy clusters
-```{r}
-ggplot(companies_clusters) + 
-  geom_point(aes(PC1,
-                 PC2,
-                 colour = factor(fuzzy_cluster))) +
-  labs(colour = "Cluster",
-       title = "Fuzzy Clustering") + 
-  scale_alpha_continuous(guide = FALSE)
-  
-```
+
 
 ### Average values by Fuzzy Clusters
 ```{r average values for hclust}
@@ -215,3 +197,235 @@ companies_clusters %>%
   dplyr::select(c(fuzzy_cluster,total_complaint,perc_solved,average_weeks,n))
 ```
 
+## Loading the dataset
+```{r read sumarised dataset, echo=FALSE}
+clustered_companies <- read_csv('data/clustered_companies.csv')
+```
+
+## Plots
+
+### Biplot
+It is a good feature analyse the data distribution after the dimension reduction
+```{r pca biplot}
+biplot <- fviz_pca_biplot(X = companies_pca,
+                label = "var",
+                col.var = "red",
+                title = "Consumer Complaints - PC1 and PC2",
+                addEllipses  = TRUE,
+                ggtheme = theme_bw(),
+                alpha = 0.3)
+
+biplot
+ggsave(filename = "img/biplot.png",
+       plot = biplot)
+
+```
+
+### Elbow Plot
+What is the optimal number of clusters for our dataset?
+```{r elbow}
+return_wss <- function(k, df) {
+  x <- kmeans(x = df, centers = k, nstart = 20)
+  x$tot.withinss
+}
+
+elbow <- tibble(cluster = 2:10, tot.withinss = map_dbl(2:10,return_wss,df = clustered_companies %>%
+                                                select(starts_with("PC")))) %>%
+  ggplot(aes(x=cluster,y=tot.withinss)) + 
+  geom_line() + 
+  geom_point() + 
+  geom_point(data=tibble(x=4,y=1456.7857), 
+             aes(x=x, y=y), colour="red", size=10, alpha = 0.5) +
+  labs(title = "Elbow plot",
+       x = "Number of clusters k",
+       y = "Total within-clusters sum of squares") + 
+  theme_bw()
+
+ggsave("img/elbow.png",
+       plot = elbow)
+
+elbow
+```
+
+### Cluster plot
+#### K-means Algorithm result-set
+```{r}
+kmeans_cluster_viz <- fviz_cluster(companies_kmeans,
+             companies %>%
+               select(total_complaint,perc_solved,average_weeks) %>%
+               scale(),
+             geom = "point", 
+             shape = 16,
+             ggtheme = theme_minimal(),
+             alpha = 0.5)
+
+ggsave("img/kmeans_clusters_viz.png",
+       plot = kmeans_cluster_viz)
+
+kmeans_cluster_viz
+```
+
+#### Fuzzy C-means Algorithm result-set
+```{r}
+fcm_cluster_viz <- fviz_cluster(companies_fcm,
+             companies %>%
+               select(total_complaint, perc_solved, average_weeks),
+             geom = "point", 
+             shape = 16,
+             ggtheme = theme_minimal(),
+             alpha = companies_clusters$fuzzy_membership_degree)
+
+ggsave("img/fcm_clusters_viz.png",
+       plot = fcm_cluster_viz)
+
+fcm_cluster_viz
+```
+
+### Silhouette plot
+#### K-Means Algorithm result-set
+```{r}
+kmeans_dist <- dist(scale(clustered_companies %>% select(starts_with("PC"))))
+sil <- silhouette(clustered_companies$kmeans_cluster,kmeans_dist)
+
+silplot <- fviz_silhouette(sil, 
+                           label = FALSE, 
+                           print.summary = TRUE,
+                           scale_fill_brewer = scale_fill_brewer(palette = "Set2"))
+ggsave(filename = "img/kmeans_silhouette.png",
+       plot = silplot)
+
+silplot
+```
+
+#### Fuzzy C-Means Algorithm result-set
+```{r}
+fcm_dist <- dist(scale(clustered_companies %>% select(starts_with("PC"))))
+fcm_sil <- silhouette(clustered_companies$fuzzy_cluster,fcm_dist)
+
+fcm_silplot <- fviz_silhouette(fcm_sil, 
+                           label = FALSE, 
+                           print.summary = TRUE,
+                           scale_fill_brewer = scale_fill_brewer(palette = "Set2"))
+
+fcm_silplot
+
+ggsave(filename = "img/fcm_silhouette.png",
+       plot = fcm_silplot)
+```
+
+### Clusters Features
+#### Size of the clusters
+
+```{r}
+clusters_size <- tibble(algorithm = "K-means",cluster = 1:5 ,size = companies_kmeans$size) %>%
+  bind_rows(tibble(algorithm = "Fuzzy C-means", cluster = 1:5, size = companies_fcm$size)) %>%
+  group_by(algorithm) %>%
+  dplyr::mutate(perc = size/sum(size)*100,
+         total = sum(size),
+         no = n()) %>%
+  ungroup() %>%
+  dplyr::mutate(cluster = reorder(cluster,desc(cluster))) %>%
+  dplyr::mutate(algorithm = factor(algorithm),
+                algorithm = fct_rev(algorithm)) %>%
+  ggplot(aes(x = cluster, y=size+10, 
+             fill = algorithm),
+         colour = "black") + 
+  geom_bar(stat = "identity",
+           show.legend = FALSE) + 
+  geom_text(aes(y = size + 60, 
+               label = paste0(round(perc,2),"%")
+               )) + 
+  facet_wrap(~algorithm, scales = "fixed" , ncol = 1) + 
+  scale_fill_brewer(palette = "Set2") + 
+  labs(title = "Size of Clusters by Algorithm",
+       x = "Cluster",
+       y = "Number of Observations") + 
+  theme_minimal() + 
+  coord_flip()
+
+clusters_size
+
+ggsave("img/clusters_size.png",clusters_size)
+```
+
+#### Distribution of variables - K-Means
+```{r}
+kmeans_dist_plot <- companies_clusters %>%
+  select(total_complaint,perc_solved,average_weeks,kmeans_cluster) %>%
+  gather(feature,values,total_complaint:average_weeks) %>%
+  dplyr::mutate(feature = factor(feature),
+                feature = fct_recode(feature,
+                                     `Total Number of Complaints` = "total_complaint",
+                                     `Solving Rate (%)` = "perc_solved",
+                                     `Average Duration (Weeks)` = "average_weeks")) %>%
+  dplyr::mutate(values = if_else(feature == "Solving Rate (%)",values * 100, values)) %>%
+  ggplot() + 
+  geom_jitter(aes(x=kmeans_cluster,
+                  y=values,
+                  colour=factor(kmeans_cluster)), 
+              alpha = 0.1) +
+  geom_boxplot(aes(x=kmeans_cluster,
+                   y=values,
+                   group=kmeans_cluster,
+                   fill=factor(kmeans_cluster)),
+               outlier.shape = NA) + 
+  ggplot2::scale_y_log10() + 
+  facet_wrap(~feature,
+             scales = "free") + 
+  labs(title = "Distribution of values by Feature by Cluster",
+       x = "Cluster",
+       y = "Values",
+       fill = "Cluster") +
+  theme_minimal() + 
+  scale_fill_brewer(palette = "Set2") + 
+  scale_color_brewer(palette = "Set2") + 
+  guides(colour=FALSE)
+
+ggsave(filename = "img/kmeans_distribution.png",
+       plot = kmeans_dist_plot,
+       width = 12,
+       height = 8)
+
+kmeans_dist_plot
+```
+
+#### Distribution of variables - Fuzzy C-Means
+```{r}
+fcm_dist_plot <- companies_clusters %>%
+  select(total_complaint,perc_solved,average_weeks,fuzzy_cluster) %>%
+  gather(feature,values,total_complaint:average_weeks) %>%
+  dplyr::mutate(feature = factor(feature),
+                feature = fct_recode(feature,
+                                     `Total Number of Complaints` = "total_complaint",
+                                     `Solving Rate (%)` = "perc_solved",
+                                     `Average Duration (Weeks)` = "average_weeks")) %>%
+  dplyr::mutate(values = if_else(feature == "Solving Rate (%)",values * 100, values)) %>%
+  ggplot() + 
+  geom_jitter(aes(x=fuzzy_cluster,
+                  y=values,
+                  colour=factor(fuzzy_cluster)), 
+              alpha = 0.1) +
+  geom_boxplot(aes(x=fuzzy_cluster,
+                   y=values,
+                   group=fuzzy_cluster,
+                   fill=factor(fuzzy_cluster)),
+               outlier.shape = NA) + 
+  ggplot2::scale_y_log10() + 
+  facet_wrap(~feature,
+             scales = "free") + 
+  labs(title = "Distribution of values by Feature by Soft Cluster",
+       x = "Cluster",
+       y = "Values",
+       fill = "Cluster") +
+  theme_minimal() + 
+  scale_fill_brewer(palette = "Set2") + 
+  scale_color_brewer(palette = "Set2") + 
+  guides(colour=FALSE)
+
+ggsave(filename = "img/fcm_distribution.png",
+       plot = fcm_dist_plot,
+       width = 12,
+       height = 8)
+
+fcm_dist_plot
+```
